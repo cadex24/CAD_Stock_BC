@@ -8,35 +8,55 @@ app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
-# Token de tu bot CAD_Stock_BC
 TELEGRAM_TOKEN = "8880757995:AAFre5X-HtkmDr0BYpvHTV0pT6DFIbM6JKg"
 
-# Tu Chat ID
-CHAT_ID = "7742724655"
+# Lista de destinatarios
+CHAT_IDS = [
+    "7742724655",  # Tu Chat ID
+    # "AQUI_EL_CHAT_ID_DE_TU_SRA"  # Chat ID de tu señora
+]
 
-# URL a monitorear
 URL_MONITOREO = "https://si3.bcentral.cl/siete"
 
 # ==================== FUNCIONES ====================
 
+def en_horario():
+    """
+    Verifica si estamos en horario de control:
+    - Lunes a Viernes
+    - 8:00 AM a 7:00 PM (19:00)
+    """
+    ahora = datetime.now()
+    dia_semana = ahora.weekday()  # 0=Lunes, 4=Viernes, 5=Sabado, 6=Domingo
+    
+    # Solo de lunes a viernes
+    if dia_semana >= 5:
+        return False
+    
+    hora = ahora.hour + ahora.minuto / 60.0
+    
+    # Entre 8:00 AM y 7:00 PM (19:00)
+    return 8.0 <= hora <= 19.0
+
 def enviar_alerta_telegram(mensaje):
     """
-    Envía un mensaje a Telegram
+    Envía un mensaje a todos los destinatarios
     """
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": CHAT_ID,
-            "text": mensaje,
-            "parse_mode": "Markdown"
-        }
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            print(f"📱 Alerta enviada a Telegram", flush=True)
-        else:
-            print(f"❌ Error: {response.text}", flush=True)
-    except Exception as e:
-        print(f"❌ Error: {e}", flush=True)
+    for chat_id in CHAT_IDS:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": mensaje,
+                "parse_mode": "Markdown"
+            }
+            response = requests.post(url, json=payload)
+            if response.status_code == 200:
+                print(f"📱 Alerta enviada a {chat_id}", flush=True)
+            else:
+                print(f"❌ Error enviando a {chat_id}: {response.text}", flush=True)
+        except Exception as e:
+            print(f"❌ Error: {e}", flush=True)
 
 def verificar_web():
     """
@@ -49,7 +69,7 @@ def verificar_web():
         else:
             return False, f"⚠️ BDE: OFFLINE 🔴 (Código: {response.status_code})"
     except requests.exceptions.Timeout:
-        return False, "❌ BDE: OFFLINE 🔴 (Timeout - No responde)"
+        return False, "❌ BDE: OFFLINE 🔴 (Timeout)"
     except requests.exceptions.ConnectionError:
         return False, "❌ BDE: OFFLINE 🔴 (Error de conexión)"
     except Exception as e:
@@ -57,8 +77,15 @@ def verificar_web():
 
 def revisar_web_cada_2min():
     """
-    Revisa la web cada 2 minutos para detectar caídas inmediatas
+    Revisa la web cada 2 minutos (solo en horario)
     """
+    # Verificar horario
+    if not en_horario():
+        # Solo mostramos mensaje cada hora para no llenar logs
+        if datetime.now().minute == 0:
+            print(f"🕒 [OFF] Fuera de horario (8:00-19:00 Lun-Vie)", flush=True)
+        return
+    
     ahora = datetime.now()
     print(f"🕒 [{ahora.strftime('%H:%M:%S')}] Revisando BDE...", flush=True)
     
@@ -81,10 +108,14 @@ def revisar_web_cada_2min():
 
 def revisar_web_cada_1hora():
     """
-    Revisa la web cada 1 hora para confirmar que sigue online
+    Revisa la web cada 1 hora (solo en horario)
     """
+    # Verificar horario
+    if not en_horario():
+        return
+    
     ahora = datetime.now()
-    print(f"🕐 [{ahora.strftime('%H:%M:%S')}] ALERTA HORARIA - Verificando BDE...", flush=True)
+    print(f"🕐 [{ahora.strftime('%H:%M:%S')}] ALERTA HORARIA", flush=True)
     
     activa, mensaje = verificar_web()
     
@@ -133,9 +164,10 @@ def estado():
 📊 {mensaje}
 🕐 Última revisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 📱 Alertas por: Telegram
-👤 Destinatario: Carl
+👥 Destinatarios: Carl
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
+🕐 Horario: Lun-Vie 8:00-19:00
 """
     else:
         return f"""
@@ -146,9 +178,10 @@ def estado():
 📊 {mensaje}
 🕐 Última revisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 📱 Alertas por: Telegram
-👤 Destinatario: Carl
+👥 Destinatarios: Carl
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
+🕐 Horario: Lun-Vie 8:00-19:00
 """
 
 @app.route("/test")
@@ -183,6 +216,6 @@ if __name__ == "__main__":
     print(f"⏱️ Revisión cada: 2 minutos")
     print(f"⏱️ Alerta horaria: Cada 1 hora")
     print(f"📱 Alertas por: Telegram")
-    print(f"👤 Destinatario: Carl")
+    print(f"🕐 Horario: Lun-Vie 8:00-19:00")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
