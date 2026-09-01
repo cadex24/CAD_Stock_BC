@@ -97,7 +97,7 @@ def revisar_web_cada_1hora():
     """
     Revisa la web cada 1 hora para confirmar que sigue online
     """
-    global ULTIMO_ALERTA_HORA, ESTADO_ACTUAL
+    global ULTIMA_ALERTA_HORA, ESTADO_ACTUAL
     
     ahora = datetime.now()
     print(f"🕐 [{ahora.strftime('%H:%M:%S')}] ALERTA HORARIA - Verificando BDE...", flush=True)
@@ -134,9 +134,16 @@ def revisar_web_cada_1hora():
         enviar_alerta_instagram(alerta)
         ULTIMA_ALERTA_HORA = ahora
 
-def obtener_estado():
+# ==================== RUTAS (ENDOPOINTS) ====================
+
+@app.route("/")
+def index():
+    return "🟢 BDE Monitor - Banco Central de Chile", 200
+
+@app.route("/estado")
+def estado():
     """
-    Comando para ver el estado actual
+    Endpoint para ver el estado actual de la web
     """
     activa, mensaje = verificar_web()
     
@@ -165,6 +172,20 @@ def obtener_estado():
 ⏱️ Alerta horaria: Cada 1 hora
 """
 
+@app.route("/test")
+def test():
+    """
+    Endpoint para probar el envío de alertas
+    """
+    alerta = f"""
+🧪 ALERTA DE PRUEBA
+
+✅ Este es un mensaje de prueba del BDE Monitor.
+🕐 Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+    enviar_alerta_instagram(alerta)
+    return "Alerta de prueba enviada", 200
+
 # ==================== SERVIDOR ====================
 
 # Scheduler para revisión cada 2 minutos
@@ -176,28 +197,6 @@ scheduler_2min.start()
 scheduler_1hora = BackgroundScheduler()
 scheduler_1hora.add_job(func=revisar_web_cada_1hora, trigger="interval", minutes=60)
 scheduler_1hora.start()
-
-@app.route("/")
-def index():
-    return "🟢 BDE Monitor - Banco Central de Chile", 200
-
-@app.route("/estado")
-def estado():
-    return obtener_estado()
-
-@app.route("/test")
-def test():
-    """
-    Endpoint para probar el envío de alertas
-    """
-    alerta = """
-🧪 ALERTA DE PRUEBA
-
-✅ Este es un mensaje de prueba del BDE Monitor.
-🕐 Hora: {}
-""".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-    enviar_alerta_instagram(alerta)
-    return "Alerta de prueba enviada", 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
