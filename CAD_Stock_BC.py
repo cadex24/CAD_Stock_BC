@@ -33,7 +33,7 @@ def en_horario():
     if dia_semana >= 5:
         return False
     
-    hora = ahora.hour + ahora.minuto / 60.0
+    hora = ahora.hour + ahora.minute / 60.0  # ✅ CORREGIDO
     
     # Entre 8:00 AM y 7:00 PM (19:00)
     return 8.0 <= hora <= 19.0
