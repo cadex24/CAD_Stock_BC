@@ -24,7 +24,7 @@ def en_horario():
     """
     Verifica si estamos en horario de control:
     - Lunes a Viernes
-    - 8:00 AM a 7:00 PM (19:00)
+    - 8:30 AM a 6:30 PM (18:30)
     """
     ahora = datetime.now()
     dia_semana = ahora.weekday()
@@ -33,7 +33,7 @@ def en_horario():
         return False
     
     hora = ahora.hour + ahora.minute / 60.0
-    return 8.0 <= hora <= 19.0
+    return 8.5 <= hora <= 18.5
 
 def enviar_alerta_telegram(mensaje):
     """
@@ -75,10 +75,11 @@ def verificar_web():
 def revisar_web_cada_2min():
     """
     Revisa la web cada 2 minutos (solo en horario)
+    Si detecta OFFLINE, envía alerta INMEDIATA
     """
     if not en_horario():
         if datetime.now().minute == 0:
-            print(f"🕒 [OFF] Fuera de horario (8:00-19:00 Lun-Vie)", flush=True)
+            print(f"🕒 [OFF] Fuera de horario (8:30-18:30 Lun-Vie)", flush=True)
         return
     
     ahora = datetime.now()
@@ -91,7 +92,7 @@ def revisar_web_cada_2min():
         alerta = f"""
 🚨 *ALERTA INMEDIATA* 🚨
 
-🌐 BDE: OFFLINE 🔴
+🌐 *BDE: OFFLINE* 🔴
 
 📌 URL: {URL_MONITOREO}
 📊 Estado: {mensaje}
@@ -101,22 +102,22 @@ def revisar_web_cada_2min():
 """
         enviar_alerta_telegram(alerta)
 
-def revisar_web_cada_5min():
+def revisar_web_cada_1hora():
     """
-    Revisa la web cada 5 minutos (para pruebas)
-    Envía alerta confirmando estado (ONLINE u OFFLINE)
+    Revisa la web cada 1 hora (solo en horario)
+    Envía alerta confirmando estado ONLINE u OFFLINE
     """
     if not en_horario():
         return
     
     ahora = datetime.now()
-    print(f"🕐 [{ahora.strftime('%H:%M:%S')}] ALERTA CADA 5 MIN (PRUEBA)", flush=True)
+    print(f"🕐 [{ahora.strftime('%H:%M:%S')}] ALERTA HORARIA", flush=True)
     
     activa, mensaje = verificar_web()
     
     if activa:
         alerta = f"""
-✅ *BDE: ONLINE* 🟢 (PRUEBA CADA 5 MIN)
+✅ *BDE: ONLINE* 🟢
 
 🌐 Banco Central de Chile - SIETE
 📌 URL: {URL_MONITOREO}
@@ -128,7 +129,7 @@ def revisar_web_cada_5min():
         enviar_alerta_telegram(alerta)
     else:
         alerta = f"""
-🚨 *BDE: OFFLINE* 🔴 (PRUEBA CADA 5 MIN)
+🚨 *BDE: OFFLINE* 🔴
 
 🌐 Banco Central de Chile - SIETE
 📌 URL: {URL_MONITOREO}
@@ -160,8 +161,8 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl
 ⏱️ Revisión cada: 2 minutos
-⏱️ Alerta cada: 5 minutos (PRUEBA)
-🕐 Horario: Lun-Vie 8:00-19:00
+⏱️ Alerta horaria: Cada 1 hora
+🕐 Horario: Lun-Vie 8:30-18:30
 """
     else:
         return f"""
@@ -174,8 +175,8 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl
 ⏱️ Revisión cada: 2 minutos
-⏱️ Alerta cada: 5 minutos (PRUEBA)
-🕐 Horario: Lun-Vie 8:00-19:00
+⏱️ Alerta horaria: Cada 1 hora
+🕐 Horario: Lun-Vie 8:30-18:30
 """
 
 @app.route("/test")
@@ -198,10 +199,10 @@ scheduler_2min = BackgroundScheduler()
 scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
 scheduler_2min.start()
 
-# Scheduler para alerta cada 5 minutos (PRUEBA)
-scheduler_5min = BackgroundScheduler()
-scheduler_5min.add_job(func=revisar_web_cada_5min, trigger="interval", minutes=5)
-scheduler_5min.start()
+# Scheduler para alerta horaria
+scheduler_1hora = BackgroundScheduler()
+scheduler_1hora.add_job(func=revisar_web_cada_1hora, trigger="interval", minutes=60)
+scheduler_1hora.start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
@@ -210,9 +211,9 @@ if __name__ == "__main__":
     print("="*60)
     print(f"📌 URL a monitorear: {URL_MONITOREO}")
     print(f"⏱️ Revisión cada: 2 minutos")
-    print(f"⏱️ Alerta cada: 5 minutos (PRUEBA)")
+    print(f"⏱️ Alerta horaria: Cada 1 hora")
     print(f"📱 Alertas por: Telegram")
-    print(f"🕐 Horario: Lun-Vie 8:00-19:00")
+    print(f"🕐 Horario: Lun-Vie 8:30-18:30")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
     
