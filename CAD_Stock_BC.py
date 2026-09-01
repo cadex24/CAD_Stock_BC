@@ -2,7 +2,7 @@ import os
 import requests
 from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -18,21 +18,31 @@ CHAT_IDS = [
 
 URL_MONITOREO = "https://si3.bcentral.cl/siete"
 
+# ==================== FUNCIÓN DE HORA CHILE ====================
+
+def get_hora_chile():
+    """Retorna la hora actual en Chile (UTC-4)"""
+    return datetime.now() - timedelta(hours=4)
+
+def get_hora_chile_str():
+    """Retorna la hora actual en Chile formateada"""
+    return get_hora_chile().strftime('%H:%M:%S')
+
 # ==================== FUNCIONES ====================
 
 def en_horario():
     """
     Verifica si estamos en horario de control:
     - Lunes a Viernes
-    - 8:30 AM a 6:30 PM (18:30)
+    - 8:30 AM a 6:30 PM (18:30) hora Chile
     """
-    ahora = datetime.now()
-    dia_semana = ahora.weekday()
+    hora_chile = get_hora_chile()
+    dia_semana = hora_chile.weekday()
     
     if dia_semana >= 5:
         return False
     
-    hora = ahora.hour + ahora.minute / 60.0
+    hora = hora_chile.hour + hora_chile.minute / 60.0
     return 8.5 <= hora <= 18.5
 
 def enviar_alerta_telegram(mensaje):
@@ -75,15 +85,16 @@ def verificar_web():
 def revisar_web_cada_2min():
     """
     Revisa la web cada 2 minutos (solo en horario)
-    Si detecta OFFLINE, envía alerta INMEDIATA
     """
     if not en_horario():
         if datetime.now().minute == 0:
-            print(f"🕒 [OFF] Fuera de horario (8:30-18:30 Lun-Vie)", flush=True)
+            hora_chile = get_hora_chile_str()
+            print(f"🕒 [OFF] Fuera de horario (8:30-18:30 Lun-Vie) - Hora Chile: {hora_chile}", flush=True)
         return
     
-    ahora = datetime.now()
-    print(f"🕒 [{ahora.strftime('%H:%M:%S')}] Revisando BDE...", flush=True)
+    ahora_chile = get_hora_chile()
+    hora_str = get_hora_chile_str()
+    print(f"🕒 [{hora_str}] Revisando BDE...", flush=True)
     
     activa, mensaje = verificar_web()
     print(f"   📊 {mensaje}", flush=True)
@@ -92,11 +103,11 @@ def revisar_web_cada_2min():
         alerta = f"""
 🚨 *ALERTA INMEDIATA* 🚨
 
-🌐 *BDE: OFFLINE* 🔴
+🌐 BDE: OFFLINE 🔴
 
 📌 URL: {URL_MONITOREO}
 📊 Estado: {mensaje}
-🕐 Hora: {ahora.strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Hora Chile: {hora_str}
 
 ⚠️ La página del Banco Central no está accesible.
 """
@@ -105,13 +116,13 @@ def revisar_web_cada_2min():
 def revisar_web_cada_1hora():
     """
     Revisa la web cada 1 hora (solo en horario)
-    Envía alerta confirmando estado ONLINE u OFFLINE
     """
     if not en_horario():
         return
     
-    ahora = datetime.now()
-    print(f"🕐 [{ahora.strftime('%H:%M:%S')}] ALERTA HORARIA", flush=True)
+    ahora_chile = get_hora_chile()
+    hora_str = get_hora_chile_str()
+    print(f"🕐 [{hora_str}] ALERTA HORARIA - Verificando BDE...", flush=True)
     
     activa, mensaje = verificar_web()
     
@@ -122,7 +133,7 @@ def revisar_web_cada_1hora():
 🌐 Banco Central de Chile - SIETE
 📌 URL: {URL_MONITOREO}
 📊 {mensaje}
-🕐 Hora: {ahora.strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Hora Chile: {hora_str}
 
 ✅ El sistema está funcionando correctamente.
 """
@@ -134,7 +145,7 @@ def revisar_web_cada_1hora():
 🌐 Banco Central de Chile - SIETE
 📌 URL: {URL_MONITOREO}
 📊 {mensaje}
-🕐 Hora: {ahora.strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Hora Chile: {hora_str}
 
 ⚠️ La página del Banco Central no está accesible.
 """
@@ -149,6 +160,7 @@ def index():
 @app.route("/estado")
 def estado():
     activa, mensaje = verificar_web()
+    hora_chile = get_hora_chile_str()
     
     if activa:
         return f"""
@@ -157,12 +169,12 @@ def estado():
 ✅ BDE: ONLINE 🟢
 📌 URL: {URL_MONITOREO}
 📊 {mensaje}
-🕐 Última revisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Hora Chile: {hora_chile}
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
-🕐 Horario: Lun-Vie 8:30-18:30
+🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
 """
     else:
         return f"""
@@ -171,21 +183,22 @@ def estado():
 ❌ BDE: OFFLINE 🔴
 📌 URL: {URL_MONITOREO}
 📊 {mensaje}
-🕐 Última revisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Hora Chile: {hora_chile}
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
-🕐 Horario: Lun-Vie 8:30-18:30
+🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
 """
 
 @app.route("/test")
 def test():
+    hora_chile = get_hora_chile_str()
     alerta = f"""
 🧪 *ALERTA DE PRUEBA*
 
 ✅ Este es un mensaje de prueba del BDE Monitor.
-🕐 Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Hora Chile: {hora_chile}
 
 📱 Las alertas funcionan correctamente.
 """
@@ -213,7 +226,7 @@ if __name__ == "__main__":
     print(f"⏱️ Revisión cada: 2 minutos")
     print(f"⏱️ Alerta horaria: Cada 1 hora")
     print(f"📱 Alertas por: Telegram")
-    print(f"🕐 Horario: Lun-Vie 8:30-18:30")
+    print(f"🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
     
