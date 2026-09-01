@@ -3,84 +3,71 @@ import requests
 from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
-import time
 
 app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
-# IDs de Instagram
-INSTAGRAM_IDS = {
-    "bot": "27392412001",           # ID del bot
-    "carl": "50637244",             # Tu ID
-    "romina": "11789728112"         # ID de tu señora
-}
+# Token de tu bot CAD_Stock_BC
+TELEGRAM_TOKEN = "8880757995:AAFre5X-HtkmDr0BYpvHTV0pT6DFIbM6JKg"
+
+# Tu Chat ID
+CHAT_ID = "7742724655"
 
 # URL a monitorear
 URL_MONITOREO = "https://si3.bcentral.cl/siete"
 
-# Estado actual de la web
-ESTADO_ACTUAL = "DESCONOCIDO"
-ULTIMA_ALERTA_HORA = None
-
 # ==================== FUNCIONES ====================
 
-def enviar_alerta_instagram(mensaje):
+def enviar_alerta_telegram(mensaje):
     """
-    Envía una alerta a Instagram (simulado por ahora)
+    Envía un mensaje a Telegram
     """
-    print("="*60)
-    print("📱 ALERTA INSTAGRAM")
-    print("="*60)
-    print(f"📌 Mensaje: {mensaje}")
-    print(f"👥 Destinatarios:")
-    print(f"   • Carl (ID: {INSTAGRAM_IDS['carl']})")
-    print(f"   • Romina (ID: {INSTAGRAM_IDS['romina']})")
-    print(f"🕐 Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*60)
-    print("")
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": mensaje,
+            "parse_mode": "Markdown"
+        }
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            print(f"📱 Alerta enviada a Telegram", flush=True)
+        else:
+            print(f"❌ Error: {response.text}", flush=True)
+    except Exception as e:
+        print(f"❌ Error: {e}", flush=True)
 
 def verificar_web():
     """
     Verifica el estado de la página web
-    Retorna: (activa, mensaje)
     """
-    global ESTADO_ACTUAL
-    
     try:
         response = requests.get(URL_MONITOREO, timeout=10)
         if response.status_code == 200:
-            ESTADO_ACTUAL = "ONLINE"
             return True, "✅ BDE: ONLINE 🟢"
         else:
-            ESTADO_ACTUAL = "OFFLINE"
             return False, f"⚠️ BDE: OFFLINE 🔴 (Código: {response.status_code})"
     except requests.exceptions.Timeout:
-        ESTADO_ACTUAL = "OFFLINE"
         return False, "❌ BDE: OFFLINE 🔴 (Timeout - No responde)"
     except requests.exceptions.ConnectionError:
-        ESTADO_ACTUAL = "OFFLINE"
         return False, "❌ BDE: OFFLINE 🔴 (Error de conexión)"
     except Exception as e:
-        ESTADO_ACTUAL = "OFFLINE"
         return False, f"❌ BDE: OFFLINE 🔴 (Error: {str(e)})"
 
 def revisar_web_cada_2min():
     """
     Revisa la web cada 2 minutos para detectar caídas inmediatas
     """
-    global ULTIMA_ALERTA_HORA, ESTADO_ACTUAL
-    
     ahora = datetime.now()
     print(f"🕒 [{ahora.strftime('%H:%M:%S')}] Revisando BDE...", flush=True)
     
     activa, mensaje = verificar_web()
     print(f"   📊 {mensaje}", flush=True)
     
-    # Si está OFFLINE, enviar alerta INMEDIATA
     if not activa:
         alerta = f"""
-🚨 ALERTA INMEDIATA 🚨
+🚨 *ALERTA INMEDIATA* 🚨
 
 🌐 BDE: OFFLINE 🔴
 
@@ -90,24 +77,20 @@ def revisar_web_cada_2min():
 
 ⚠️ La página del Banco Central no está accesible.
 """
-        enviar_alerta_instagram(alerta)
-        ULTIMA_ALERTA_HORA = ahora
+        enviar_alerta_telegram(alerta)
 
 def revisar_web_cada_1hora():
     """
     Revisa la web cada 1 hora para confirmar que sigue online
     """
-    global ULTIMA_ALERTA_HORA, ESTADO_ACTUAL
-    
     ahora = datetime.now()
     print(f"🕐 [{ahora.strftime('%H:%M:%S')}] ALERTA HORARIA - Verificando BDE...", flush=True)
     
     activa, mensaje = verificar_web()
     
     if activa:
-        # Enviar alerta de que sigue ONLINE
         alerta = f"""
-✅ ESTADO BDE: ONLINE 🟢
+✅ *ESTADO BDE: ONLINE* 🟢
 
 🌐 Banco Central de Chile - SIETE
 📌 URL: {URL_MONITOREO}
@@ -116,12 +99,10 @@ def revisar_web_cada_1hora():
 
 ✅ El sistema sigue funcionando correctamente.
 """
-        enviar_alerta_instagram(alerta)
-        ULTIMA_ALERTA_HORA = ahora
+        enviar_alerta_telegram(alerta)
     else:
-        # Si está offline en la revisión horaria, enviar alerta inmediata
         alerta = f"""
-🚨 ALERTA HORARIA 🚨
+🚨 *ALERTA HORARIA* 🚨
 
 🌐 BDE: OFFLINE 🔴
 
@@ -131,10 +112,9 @@ def revisar_web_cada_1hora():
 
 ⚠️ La página del Banco Central no está accesible.
 """
-        enviar_alerta_instagram(alerta)
-        ULTIMA_ALERTA_HORA = ahora
+        enviar_alerta_telegram(alerta)
 
-# ==================== RUTAS (ENDOPOINTS) ====================
+# ==================== RUTAS ====================
 
 @app.route("/")
 def index():
@@ -142,9 +122,6 @@ def index():
 
 @app.route("/estado")
 def estado():
-    """
-    Endpoint para ver el estado actual de la web
-    """
     activa, mensaje = verificar_web()
     
     if activa:
@@ -155,7 +132,8 @@ def estado():
 📌 URL: {URL_MONITOREO}
 📊 {mensaje}
 🕐 Última revisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-👥 Destinatarios: Carl y Romina
+📱 Alertas por: Telegram
+👤 Destinatario: Carl
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
 """
@@ -167,33 +145,31 @@ def estado():
 📌 URL: {URL_MONITOREO}
 📊 {mensaje}
 🕐 Última revisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-👥 Destinatarios: Carl y Romina
+📱 Alertas por: Telegram
+👤 Destinatario: Carl
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
 """
 
 @app.route("/test")
 def test():
-    """
-    Endpoint para probar el envío de alertas
-    """
     alerta = f"""
-🧪 ALERTA DE PRUEBA
+🧪 *ALERTA DE PRUEBA*
 
 ✅ Este es un mensaje de prueba del BDE Monitor.
 🕐 Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+📱 Las alertas funcionan correctamente.
 """
-    enviar_alerta_instagram(alerta)
+    enviar_alerta_telegram(alerta)
     return "Alerta de prueba enviada", 200
 
 # ==================== SERVIDOR ====================
 
-# Scheduler para revisión cada 2 minutos
 scheduler_2min = BackgroundScheduler()
 scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
 scheduler_2min.start()
 
-# Scheduler para alerta horaria
 scheduler_1hora = BackgroundScheduler()
 scheduler_1hora.add_job(func=revisar_web_cada_1hora, trigger="interval", minutes=60)
 scheduler_1hora.start()
@@ -206,7 +182,7 @@ if __name__ == "__main__":
     print(f"📌 URL a monitorear: {URL_MONITOREO}")
     print(f"⏱️ Revisión cada: 2 minutos")
     print(f"⏱️ Alerta horaria: Cada 1 hora")
-    print(f"👥 Destinatarios: Carl y Romina")
-    print(f"🌐 Servidor en puerto: {port}")
+    print(f"📱 Alertas por: Telegram")
+    print(f"👤 Destinatario: Carl")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
