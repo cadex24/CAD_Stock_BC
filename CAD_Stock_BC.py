@@ -147,7 +147,7 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 2 minutos
-⏱️ Alerta horaria: Cada 1 hora
+⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)
 🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
 """
     else:
@@ -161,7 +161,7 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 2 minutos
-⏱️ Alerta horaria: Cada 1 hora
+⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)
 🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
 """
 
@@ -181,6 +181,8 @@ def test():
 
 # ==================== WEBHOOK DE TELEGRAM ====================
 
+estado_usuario = {}
+
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook_telegram():
     try:
@@ -192,17 +194,36 @@ def webhook_telegram():
             
             print(f"📩 Mensaje recibido de {chat_id}: {text}", flush=True)
             
-            # Verificar si el chat_id está autorizado
             if str(chat_id) not in CHAT_IDS.values():
                 enviar_mensaje_telegram(chat_id, "⚠️ No estás autorizado para usar este bot.")
                 return "OK", 200
             
-            # ============ COMANDO: /recordar ============
-            if text.startswith("/recordar"):
-                partes = text.split(" ", 1)
-                if len(partes) > 1:
-                    mensaje = partes[1]
-                    # Enviar a Romina: "CAD_Stock_BC: [mensaje]"
+            # ============ FLUJO DE /resumen ============
+            if text == "/resumen":
+                estado_usuario[chat_id] = "esperando_opcion_resumen"
+                
+                respuesta = """
+📋 *Selecciona una opción para enviar a Romina:*
+
+1️⃣ Estimado Usuario de CAD_Stock_BC : favor calificar su servicio 1 : Bien   2 : BAD
+2️⃣ Estimado Usuario de CAD_Stock_BC : alternativas de mejora o opiniones ?
+3️⃣ Estimado Usuario de CAD_Stock_BC : calificar servicio de 1 - 7 gracias
+
+Responde con el número de la opción (1, 2 o 3).
+"""
+                enviar_mensaje_telegram(chat_id, respuesta)
+            
+            # ============ MANEJAR RESPUESTA DE OPCIÓN ============
+            elif estado_usuario.get(chat_id) == "esperando_opcion_resumen":
+                if text in ["1", "2", "3"]:
+                    opciones = {
+                        "1": "Dear CAD_Stock_BC User: Please rate your service 1: Good   2: BAD",
+                        "2": "Dear CAD_Stock_BC User: alternatives for improvement or opinions?",
+                        "3": "Dear CAD_Stock_BC User: rate the service from 1 to 7, thank you"
+                    }
+                    mensaje = opciones[text]
+                    
+                    # Enviar a Romina (en inglés)
                     enviar_mensaje_telegram(
                         CHAT_IDS["romina"],
                         f"CAD_Stock_BC: {mensaje}"
@@ -212,10 +233,48 @@ def webhook_telegram():
                         chat_id,
                         f"✅ Recordatorio enviado a Romina: {mensaje}"
                     )
+                    # Limpiar estado
+                    estado_usuario[chat_id] = None
+                else:
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        "⚠️ Opción inválida. Responde con 1, 2 o 3."
+                    )
+            
+            # ============ COMANDO /recordar ============
+            elif text.startswith("/recordar"):
+                partes = text.split(" ", 1)
+                if len(partes) > 1:
+                    mensaje = partes[1]
+                    enviar_mensaje_telegram(
+                        CHAT_IDS["romina"],
+                        f"CAD_Stock_BC: {mensaje}"
+                    )
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        f"✅ Recordatorio enviado a Romina: {mensaje}"
+                    )
                 else:
                     enviar_mensaje_telegram(
                         chat_id,
                         "⚠️ Debes escribir un mensaje. Ejemplo:\n`/recordar Pagar la luz`"
+                    )
+            
+            # ============ RESPUESTA DE ROMINA ============
+            elif str(chat_id) == CHAT_IDS["romina"]:
+                if not text.startswith("/"):
+                    # Limitar a 80 palabras
+                    palabras = text.split()
+                    if len(palabras) > 80:
+                        text = " ".join(palabras[:80]) + "..."
+                    
+                    enviar_mensaje_telegram(
+                        CHAT_IDS["carl"],
+                        f"📩 *Respuesta de Romina:*\n\n{text}\n\n🕐 {get_hora_chile_str()}"
+                    )
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        "✅ Tu respuesta ha sido enviada a Carl. ¡Gracias! 🙏"
                     )
             
             elif text == "/start":
@@ -229,6 +288,7 @@ def webhook_telegram():
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
+/resumen - Enviar una opción predefinida a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -272,6 +332,7 @@ def webhook_telegram():
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
+/resumen - Enviar una opción predefinida a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -282,12 +343,44 @@ def webhook_telegram():
 
 # ==================== SERVIDOR ====================
 
+# Scheduler para revisión cada 2 minutos (monitoreo)
 scheduler_2min = BackgroundScheduler()
 scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
 scheduler_2min.start()
 
+# Scheduler para alerta horaria (programada a las 8:30 y luego cada 1 hora)
 scheduler_1hora = BackgroundScheduler()
-scheduler_1hora.add_job(func=revisar_web_cada_1hora, trigger="interval", minutes=60)
+
+def programar_alerta_horaria():
+    """Programa la primera alerta a las 8:30 AM y luego cada 1 hora"""
+    ahora = get_hora_chile()
+    hoy = ahora.date()
+    
+    # Calcular la próxima 8:30 AM
+    hora_8_30 = datetime(hoy.year, hoy.month, hoy.day, 8, 30, 0)
+    
+    # Si ya pasaron las 8:30 hoy, programar para mañana
+    if ahora > hora_8_30:
+        hora_8_30 = hora_8_30 + timedelta(days=1)
+    
+    print(f"⏰ Próxima alerta programada a las {hora_8_30.strftime('%H:%M')}", flush=True)
+    
+    # Programar la primera alerta a las 8:30
+    scheduler_1hora.add_job(
+        func=revisar_web_cada_1hora,
+        trigger="date",
+        run_date=hora_8_30
+    )
+    
+    # Programar el resto cada 1 hora
+    scheduler_1hora.add_job(
+        func=revisar_web_cada_1hora,
+        trigger="interval",
+        hours=1,
+        start_date=hora_8_30 + timedelta(hours=1)
+    )
+
+programar_alerta_horaria()
 scheduler_1hora.start()
 
 if __name__ == "__main__":
@@ -297,7 +390,7 @@ if __name__ == "__main__":
     print("="*60)
     print(f"📌 URL a monitorear: {URL_MONITOREO}")
     print(f"⏱️ Revisión cada: 2 minutos")
-    print(f"⏱️ Alerta horaria: Cada 1 hora")
+    print(f"⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)")
     print(f"📱 Alertas por: Telegram")
     print(f"👥 Destinatarios: Carl y Romina")
     print(f"🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)")
