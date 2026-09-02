@@ -8,6 +8,7 @@ app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
+# LEE EL TOKEN DESDE LAS VARIABLES DE ENTORNO (SEGURO)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "NO_HAY_TOKEN")
 
 CHAT_IDS = {
@@ -198,12 +199,12 @@ def webhook_telegram():
                 enviar_mensaje_telegram(chat_id, "⚠️ No estás autorizado para usar este bot.")
                 return "OK", 200
             
-            # ============ COMANDO /resumen ============
-            if text == "/resumen":
-                estado_usuario[chat_id] = "esperando_opcion_resumen"
+            # ============ COMANDO /consultas ============
+            if text == "/consultas":
+                estado_usuario[chat_id] = "esperando_opcion_consulta"
                 
                 respuesta = """
-📋 *Selecciona una opción para enviar a Romina:*
+📋 *Selecciona una consulta para enviar a Romina:*
 
 1️⃣ Estimado Usuario de CAD_Stock_BC : favor calificar su servicio 1 : Bien   2 : BAD
 2️⃣ Estimado Usuario de CAD_Stock_BC : alternativas de mejora o opiniones ?
@@ -213,8 +214,8 @@ Responde con el número de la opción (1, 2 o 3).
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
             
-            # ============ MANEJAR RESPUESTA DE OPCIÓN ============
-            elif estado_usuario.get(chat_id) == "esperando_opcion_resumen":
+            # ============ MANEJAR RESPUESTA DE CONSULTA ============
+            elif estado_usuario.get(chat_id) == "esperando_opcion_consulta":
                 if text in ["1", "2", "3"]:
                     opciones = {
                         "1": "Dear CAD_Stock_BC User: Please rate your service 1: Good   2: BAD",
@@ -223,14 +224,17 @@ Responde con el número de la opción (1, 2 o 3).
                     }
                     mensaje = opciones[text]
                     
+                    # Enviar a Romina (en inglés)
                     enviar_mensaje_telegram(
                         CHAT_IDS["romina"],
                         f"CAD_Stock_BC: {mensaje}"
                     )
+                    # Confirmar a Carl
                     enviar_mensaje_telegram(
                         chat_id,
-                        f"✅ Recordatorio enviado a Romina: {mensaje}"
+                        f"✅ Consulta enviada a Romina: {mensaje}"
                     )
+                    # Limpiar estado
                     estado_usuario[chat_id] = None
                 else:
                     enviar_mensaje_telegram(
@@ -284,7 +288,7 @@ Responde con el número de la opción (1, 2 o 3).
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
-/resumen - Enviar una opción predefinida a Romina
+/consultas - Enviar una consulta predefinida a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -328,7 +332,7 @@ Responde con el número de la opción (1, 2 o 3).
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
-/resumen - Enviar una opción predefinida a Romina
+/consultas - Enviar una consulta predefinida a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -339,13 +343,16 @@ Responde con el número de la opción (1, 2 o 3).
 
 # ==================== SERVIDOR ====================
 
+# Scheduler para revisión cada 2 minutos (monitoreo)
 scheduler_2min = BackgroundScheduler()
 scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
 scheduler_2min.start()
 
+# Scheduler para alerta horaria (programada a las 8:30 y luego cada 1 hora)
 scheduler_1hora = BackgroundScheduler()
 
 def programar_alerta_horaria():
+    """Programa la primera alerta a las 8:30 AM y luego cada 1 hora"""
     ahora = get_hora_chile()
     hoy = ahora.date()
     hora_8_30 = datetime(hoy.year, hoy.month, hoy.day, 8, 30, 0)
@@ -355,12 +362,14 @@ def programar_alerta_horaria():
     
     print(f"⏰ Próxima alerta programada a las {hora_8_30.strftime('%H:%M')}", flush=True)
     
+    # Programar la primera alerta a las 8:30
     scheduler_1hora.add_job(
         func=revisar_web_cada_1hora,
         trigger="date",
         run_date=hora_8_30
     )
     
+    # Programar el resto cada 1 hora
     scheduler_1hora.add_job(
         func=revisar_web_cada_1hora,
         trigger="interval",
