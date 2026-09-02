@@ -1,24 +1,21 @@
 import os
 import requests
-import yfinance as yf
 from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
+# ==================== CONFIGURACIÓN ====================
+
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "NO_HAY_TOKEN")
 
-ULTIMO_CHAT_ID = None
-MI_CARTERA = {}
-ESTADO_ALERTAS = {}
-ESTADO_USUARIO = {}  # Para el flujo de /consultas
+CHAT_IDS = {
+    "carl": "7742724655",
+    "romina": "8834565828"
+}
 
-TICKERS_INTERES = [
-    "BCI", "BSANTANDER", "CAP", "CENCOSUD", "CHILE",
-    "CMPC", "COPEC", "ENTEL", "QUINENCO",
-    "SQM-B", "VAPORES", "SMSAAM", "LTM", "ITAUCL", "BESALCO"
-]
+URL_MONITOREO = "https://si3.bcentral.cl/siete"
 
 # ==================== FUNCIÓN DE HORA CHILE ====================
 
@@ -28,319 +25,362 @@ def get_hora_chile():
 def get_hora_chile_str():
     return get_hora_chile().strftime('%H:%M:%S')
 
-# ==================== FUNCIONES DE DATOS ====================
+# ==================== FUNCIONES ====================
 
-def obtener_datos_accion(ticker_limpio):
-    try:
-        ticker = f"{ticker_limpio}.SN"
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="2d")
-        
-        if hist.empty:
-            return None, None, None, None
-        
-        p_act = float(hist['Close'].iloc[-1])
-        p_apertura = float(hist['Open'].iloc[0])
-        p_min = float(hist['Low'].min())
-        p_max = float(hist['High'].max())
-        
-        return p_act, p_apertura, p_min, p_max
-    except Exception as e:
-        print(f"Error en {ticker_limpio}: {e}", flush=True)
-        return None, None, None, None
-
-def obtener_resumen_general():
-    texto = "📊 *MERCADO CHILENO*\n"
-    texto += "─" * 20 + "\n\n"
-    contador = 0
-    
-    for ticker in TICKERS_INTERES:
-        datos = obtener_datos_accion(ticker)
-        if datos and datos[0]:
-            p_act, p_apertura, _, _ = datos
-            var = ((p_act - p_apertura) / p_apertura) * 100 if p_apertura > 0 else 0
-            
-            if var > 0:
-                icono = "▴"
-                color = "🟢"
-            elif var < 0:
-                icono = "▾"
-                color = "🔴"
-            else:
-                icono = "—"
-                color = "⚪"
-            
-            texto += f"{color} *{ticker}*  {icono} {var:+.2f}%\n"
-            texto += f"   ${p_act:,.2f}  (apertura ${p_apertura:,.2f})\n\n"
-            contador += 1
-            
-    return texto if contador > 0 else "⚠️ No se pudo obtener información del mercado."
-
-def consultar_accion(ticker_input):
-    ticker_limpio = ticker_input.upper().replace(".SN", "").strip()
-    datos = obtener_datos_accion(ticker_limpio)
-    
-    if datos and datos[0]:
-        p_act, p_apertura, p_min, p_max = datos
-        var = ((p_act - p_apertura) / p_apertura) * 100 if p_apertura > 0 else 0
-        
-        if var > 0:
-            estado = "🟢 Alcista"
-        elif var < 0:
-            estado = "🔴 Bajista"
-        else:
-            estado = "⚪ Sin cambios"
-        
-        texto = f"🔍 *{ticker_limpio}*\n"
-        texto += "─" * 15 + "\n\n"
-        texto += f"💰 Precio  :  ${p_act:,.2f}\n"
-        texto += f"📊 Apertura :  ${p_apertura:,.2f}\n"
-        texto += f"📈 Variación:  {var:+.2f}%\n"
-        texto += f"📉 Mínimo   :  ${p_min:,.2f}\n"
-        texto += f"📈 Máximo   :  ${p_max:,.2f}\n\n"
-        texto += f"▸ {estado}"
-        
-        if var >= 2.0:
-            texto += "  ⚡ alza"
-        elif var <= -2.0:
-            texto += "  ⚡ baja"
-        
-        return texto
-                
-    return f"❌ No se encontró información para `{ticker_limpio}`."
-
-def consultar_cartera():
-    if not MI_CARTERA:
-        return "📭 No tienes cartera configurada."
-        
-    texto = "💼 *CARTERA*\n"
-    texto += "─" * 15 + "\n\n"
-    total_valor = 0
-    total_inversion = 0
-    
-    for ticker, datos_c in MI_CARTERA.items():
-        cant = datos_c["cantidad"]
-        p_compra = datos_c["precio_compra"]
-        ticker_limpio = ticker.replace(".SN", "").upper()
-        
-        datos = obtener_datos_accion(ticker_limpio)
-        if datos and datos[0]:
-            p_act = datos[0]
-            val_actual = cant * p_act
-            val_inicial = cant * p_compra
-            pnl = val_actual - val_inicial
-            pnl_porc = (pnl / val_inicial) * 100 if val_inicial > 0 else 0
-            
-            total_valor += val_actual
-            total_inversion += val_inicial
-            
-            if pnl > 0:
-                icono = "🟢"
-            elif pnl < 0:
-                icono = "🔴"
-            else:
-                icono = "⚪"
-            
-            texto += f"{icono} *{ticker_limpio}*  {cant} un.\n"
-            texto += f"   ${p_act:,.2f}  |  {pnl_porc:+.2f}%  |  ${pnl:+,.2f}\n\n"
-            
-    pnl_total = total_valor - total_inversion
-    pnl_total_porc = (pnl_total / total_inversion) * 100 if total_inversion > 0 else 0
-    
-    texto += "─" * 15 + "\n"
-    texto += f"💰 Total    :  ${total_valor:,.2f}\n"
-    texto += f"📈 PnL Total:  {pnl_total_porc:+.2f}%  (${pnl_total:+,.2f})"
-    return texto
-
-# ==================== HORARIO Y ALERTAS ====================
-
-def en_horario_mercado():
+def en_horario():
     hora_chile = get_hora_chile()
     dia_semana = hora_chile.weekday()
     if dia_semana >= 5:
         return False
     hora = hora_chile.hour + hora_chile.minute / 60.0
-    return 9.0 <= hora <= 16.1667
+    return 8.5 <= hora <= 18.5
 
-def enviar_alerta(ticker, p_act, p_apertura, var, direccion):
-    global ULTIMO_CHAT_ID, TELEGRAM_TOKEN
+def enviar_mensaje_telegram(chat_id, mensaje):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": mensaje,
+            "parse_mode": "Markdown"
+        }
+        response = requests.post(url, json=payload)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"❌ Error enviando mensaje: {e}", flush=True)
+        return False
+
+def enviar_alerta_telegram(mensaje):
+    for nombre, chat_id in CHAT_IDS.items():
+        enviar_mensaje_telegram(chat_id, mensaje)
+
+def verificar_web():
+    try:
+        response = requests.get(URL_MONITOREO, timeout=10)
+        if response.status_code == 200:
+            return True, "✅ BDE: ONLINE 🟢"
+        else:
+            return False, f"⚠️ BDE: OFFLINE 🔴 (Código: {response.status_code})"
+    except requests.exceptions.Timeout:
+        return False, "❌ BDE: OFFLINE 🔴 (Timeout)"
+    except requests.exceptions.ConnectionError:
+        return False, "❌ BDE: OFFLINE 🔴 (Error de conexión)"
+    except Exception as e:
+        return False, f"❌ BDE: OFFLINE 🔴 (Error: {str(e)})"
+
+def revisar_web_cada_2min():
+    if not en_horario():
+        return
     
-    if direccion == "subida":
-        titulo = "🟢 ALERTA DE SUBIDA"
-        mensaje = "▸ Superó el +2% desde apertura"
-    else:
-        titulo = "🔴 ALERTA DE BAJADA"
-        mensaje = "▸ Superó el -2% desde apertura"
+    hora_str = get_hora_chile_str()
+    print(f"🕒 [{hora_str}] Revisando BDE...", flush=True)
     
-    hora_chile = get_hora_chile_str()
+    activa, mensaje = verificar_web()
+    print(f"   📊 {mensaje}", flush=True)
     
-    alerta = f"""
-🚨 *{titulo}* 🚨
+    if not activa:
+        alerta = f"""
+🚨 *ALERTA INMEDIATA* 🚨
 
-📌 *{ticker}*
+🌐 BDE: OFFLINE 🔴
 
-💰 ${p_act:,.2f}
-📊 Apertura: ${p_apertura:,.2f}
-📈 Variación: *{var:+.2f}%*
+📌 URL: {URL_MONITOREO}
+📊 Estado: {mensaje}
+🕐 Hora Chile: {hora_str}
 
-{mensaje}
-
-🕐 {hora_chile}
+⚠️ La página del Banco Central no está accesible.
 """
-    
-    url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": ULTIMO_CHAT_ID, "text": alerta, "parse_mode": "Markdown"}
-    requests.post(url_api, json=payload)
+        enviar_alerta_telegram(alerta)
 
-def revisar_alertas_mercado():
-    global ULTIMO_CHAT_ID, ESTADO_ALERTAS
-    
-    if not en_horario_mercado():
+def revisar_web_cada_1hora():
+    if not en_horario():
         return
     
-    if not ULTIMO_CHAT_ID:
-        return
+    hora_str = get_hora_chile_str()
+    print(f"🕐 [{hora_str}] ALERTA HORARIA - Verificando BDE...", flush=True)
+    
+    activa, mensaje = verificar_web()
+    
+    if activa:
+        alerta = f"""
+✅ *BDE: ONLINE* 🟢
 
-    for ticker in TICKERS_INTERES:
-        try:
-            datos = obtener_datos_accion(ticker)
-            if not datos or not datos[0]:
-                continue
-                
-            p_act, p_apertura, _, _ = datos
-            var = ((p_act - p_apertura) / p_apertura) * 100 if p_apertura > 0 else 0
-            
-            if ticker not in ESTADO_ALERTAS:
-                ESTADO_ALERTAS[ticker] = {"activa": False, "direccion": None}
-            
-            if abs(var) >= 2.0:
-                if ESTADO_ALERTAS[ticker]["activa"]:
-                    if ESTADO_ALERTAS[ticker]["direccion"] == "subida" and var <= -2.0:
-                        ESTADO_ALERTAS[ticker]["direccion"] = "bajada"
-                        enviar_alerta(ticker, p_act, p_apertura, var, "bajada")
-                    elif ESTADO_ALERTAS[ticker]["direccion"] == "bajada" and var >= 2.0:
-                        ESTADO_ALERTAS[ticker]["direccion"] = "subida"
-                        enviar_alerta(ticker, p_act, p_apertura, var, "subida")
-                else:
-                    ESTADO_ALERTAS[ticker]["activa"] = True
-                    if var >= 2.0:
-                        ESTADO_ALERTAS[ticker]["direccion"] = "subida"
-                        enviar_alerta(ticker, p_act, p_apertura, var, "subida")
-                    else:
-                        ESTADO_ALERTAS[ticker]["direccion"] = "bajada"
-                        enviar_alerta(ticker, p_act, p_apertura, var, "bajada")
-            else:
-                ESTADO_ALERTAS[ticker]["activa"] = False
-                ESTADO_ALERTAS[ticker]["direccion"] = None
-                    
-        except Exception as e:
-            print(f"Error en alerta {ticker}: {e}", flush=True)
+🌐 Banco Central de Chile (SIETE)
+📌 URL: {URL_MONITOREO}
+📊 {mensaje}
+🕐 Hora Chile: {hora_str}
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=revisar_alertas_mercado, trigger="interval", minutes=2)
-scheduler.start()
+✅ El sistema está funcionando correctamente.
+"""
+        enviar_alerta_telegram(alerta)
+    else:
+        alerta = f"""
+🚨 *BDE: OFFLINE* 🔴
+
+🌐 Banco Central de Chile (SIETE)
+📌 URL: {URL_MONITOREO}
+📊 {mensaje}
+🕐 Hora Chile: {hora_str}
+
+⚠️ La página del Banco Central no está accesible.
+"""
+        enviar_alerta_telegram(alerta)
+
+# ==================== RUTAS ====================
 
 @app.route("/")
 def index():
-    return "🟢 Bot de Mercado Chileno Activo", 200
+    return "🟢 BDE Monitor - Banco Central de Chile", 200
 
 @app.route("/estado")
 def estado():
+    activa, mensaje = verificar_web()
     hora_chile = get_hora_chile_str()
-    return f"""
-📊 *ESTADO DEL BOT*
+    
+    if activa:
+        return f"""
+📊 *ESTADO DEL MONITOR BDE*
 
-✅ Activo
-🕐 {hora_chile}
-👤 {ULTIMO_CHAT_ID if ULTIMO_CHAT_ID else "No configurado"}
-⏱️ Cada 2 min  |  Lun-Vie 9:00-16:10
-📊 Alertas: +/- 2% vs apertura
-""", 200
+✅ BDE: ONLINE 🟢
+📌 URL: {URL_MONITOREO}
+📊 {mensaje}
+🕐 Hora Chile: {hora_chile}
+📱 Alertas por: Telegram
+👥 Destinatarios: Carl y Romina
+⏱️ Revisión cada: 2 minutos
+⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)
+🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
+"""
+    else:
+        return f"""
+📊 *ESTADO DEL MONITOR BDE*
+
+❌ BDE: OFFLINE 🔴
+📌 URL: {URL_MONITOREO}
+📊 {mensaje}
+🕐 Hora Chile: {hora_chile}
+📱 Alertas por: Telegram
+👥 Destinatarios: Carl y Romina
+⏱️ Revisión cada: 2 minutos
+⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)
+🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
+"""
+
+@app.route("/test")
+def test():
+    hora_chile = get_hora_chile_str()
+    alerta = f"""
+🧪 *ALERTA DE PRUEBA*
+
+✅ Este es un mensaje de prueba del BDE Monitor.
+🕐 Hora Chile: {hora_chile}
+
+📱 Las alertas funcionan correctamente.
+"""
+    enviar_alerta_telegram(alerta)
+    return "Alerta de prueba enviada", 200
+
+# ==================== WEBHOOK DE TELEGRAM ====================
+
+estado_usuario = {}
 
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook_telegram():
-    global ULTIMO_CHAT_ID, ESTADO_USUARIO
-    
     try:
         update_json = request.get_json(force=True)
         
         if "message" in update_json:
             chat_id = update_json["message"]["chat"]["id"]
-            ULTIMO_CHAT_ID = chat_id
-            text = update_json["message"].get("text", "").strip().lower()
+            text = update_json["message"].get("text", "").strip()
             
             print(f"📩 Mensaje recibido de {chat_id}: {text}", flush=True)
             
-            # ============ NUEVO COMANDO: /consultas ============
-            if text == "/consultas":
-                ESTADO_USUARIO[chat_id] = "esperando_opcion_consulta"
+            if str(chat_id) not in CHAT_IDS.values():
+                enviar_mensaje_telegram(chat_id, "⚠️ No estás autorizado para usar este bot.")
+                return "OK", 200
+            
+            # ============ COMANDO /resumen ============
+            if text == "/resumen":
+                estado_usuario[chat_id] = "esperando_opcion_resumen"
                 
                 respuesta = """
-📋 *Selecciona una consulta para enviar:*
+📋 *Selecciona una opción para enviar a Romina:*
 
-1️⃣ ¿Cómo está el mercado hoy?
-2️⃣ ¿Qué acciones recomiendas?
-3️⃣ ¿Cuál es el rendimiento de mi cartera?
+1️⃣ Estimado Usuario de CAD_Stock_BC : favor calificar su servicio 1 : Bien   2 : BAD
+2️⃣ Estimado Usuario de CAD_Stock_BC : alternativas de mejora o opiniones ?
+3️⃣ Estimado Usuario de CAD_Stock_BC : calificar servicio de 1 - 7 gracias
 
 Responde con el número de la opción (1, 2 o 3).
 """
-                url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                payload = {"chat_id": chat_id, "text": respuesta, "parse_mode": "Markdown"}
-                requests.post(url_api, json=payload)
+                enviar_mensaje_telegram(chat_id, respuesta)
             
             # ============ MANEJAR RESPUESTA DE OPCIÓN ============
-            elif ESTADO_USUARIO.get(chat_id) == "esperando_opcion_consulta":
+            elif estado_usuario.get(chat_id) == "esperando_opcion_resumen":
                 if text in ["1", "2", "3"]:
                     opciones = {
-                        "1": "How is the market today?",
-                        "2": "Which stocks do you recommend?",
-                        "3": "What is the performance of my portfolio?"
+                        "1": "Dear CAD_Stock_BC User: Please rate your service 1: Good   2: BAD",
+                        "2": "Dear CAD_Stock_BC User: alternatives for improvement or opinions?",
+                        "3": "Dear CAD_Stock_BC User: rate the service from 1 to 7, thank you"
                     }
                     mensaje = opciones[text]
                     
-                    # Responder al usuario con la consulta seleccionada
-                    respuesta = f"✅ Has seleccionado:\n\n*{mensaje}*"
-                    url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                    payload = {"chat_id": chat_id, "text": respuesta, "parse_mode": "Markdown"}
-                    requests.post(url_api, json=payload)
-                    
-                    # Limpiar estado
-                    ESTADO_USUARIO[chat_id] = None
+                    enviar_mensaje_telegram(
+                        CHAT_IDS["romina"],
+                        f"CAD_Stock_BC: {mensaje}"
+                    )
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        f"✅ Recordatorio enviado a Romina: {mensaje}"
+                    )
+                    estado_usuario[chat_id] = None
                 else:
-                    url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                    payload = {"chat_id": chat_id, "text": "⚠️ Opción inválida. Responde con 1, 2 o 3.", "parse_mode": "Markdown"}
-                    requests.post(url_api, json=payload)
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        "⚠️ Opción inválida. Responde con 1, 2 o 3."
+                    )
             
-            elif text == "resumen":
-                respuesta = obtener_resumen_general()
-                url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                payload = {"chat_id": chat_id, "text": respuesta, "parse_mode": "Markdown"}
-                requests.post(url_api, json=payload)
+            # ============ COMANDO /recordar ============
+            elif text.startswith("/recordar"):
+                partes = text.split(" ", 1)
+                if len(partes) > 1:
+                    mensaje = partes[1]
+                    enviar_mensaje_telegram(
+                        CHAT_IDS["romina"],
+                        f"CAD_Stock_BC: {mensaje}"
+                    )
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        f"✅ Recordatorio enviado a Romina: {mensaje}"
+                    )
+                else:
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        "⚠️ Debes escribir un mensaje. Ejemplo:\n`/recordar Pagar la luz`"
+                    )
+            
+            # ============ RESPUESTA DE ROMINA ============
+            elif str(chat_id) == CHAT_IDS["romina"]:
+                if not text.startswith("/"):
+                    palabras = text.split()
+                    if len(palabras) > 80:
+                        text = " ".join(palabras[:80]) + "..."
+                    
+                    enviar_mensaje_telegram(
+                        CHAT_IDS["carl"],
+                        f"📩 *Respuesta de Romina:*\n\n{text}\n\n🕐 {get_hora_chile_str()}"
+                    )
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        "✅ Tu respuesta ha sido enviada a Carl. ¡Gracias! 🙏"
+                    )
+            
+            elif text == "/start":
+                respuesta = """
+🤖 *BDE Monitor - Banco Central de Chile*
+
+✅ Bot activo
+📌 Monitoreando: https://si3.bcentral.cl/siete
+
+*Comandos disponibles:*
+/estado - Ver estado del BDE
+/test - Probar alertas
+/recordar [texto] - Enviar recordatorio a Romina
+/resumen - Enviar una opción predefinida a Romina
+"""
+                enviar_mensaje_telegram(chat_id, respuesta)
                 
-            elif text == "cartera":
-                respuesta = consultar_cartera()
-                url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                payload = {"chat_id": chat_id, "text": respuesta, "parse_mode": "Markdown"}
-                requests.post(url_api, json=payload)
+            elif text == "/estado":
+                activa, mensaje = verificar_web()
+                hora_chile = get_hora_chile_str()
+                
+                if activa:
+                    respuesta = f"""
+📊 *ESTADO BDE*
+
+✅ BDE: ONLINE 🟢
+📌 URL: {URL_MONITOREO}
+🕐 Hora Chile: {hora_chile}
+"""
+                else:
+                    respuesta = f"""
+📊 *ESTADO BDE*
+
+❌ BDE: OFFLINE 🔴
+📌 URL: {URL_MONITOREO}
+🕐 Hora Chile: {hora_chile}
+"""
+                enviar_mensaje_telegram(chat_id, respuesta)
+                
+            elif text == "/test":
+                hora_chile = get_hora_chile_str()
+                respuesta = f"""
+🧪 *ALERTA DE PRUEBA*
+
+✅ Este es un mensaje de prueba del BDE Monitor.
+🕐 Hora Chile: {hora_chile}
+
+📱 Las alertas funcionan correctamente.
+"""
+                enviar_mensaje_telegram(chat_id, respuesta)
                 
             else:
-                respuesta = consultar_accion(text)
-                url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                payload = {"chat_id": chat_id, "text": respuesta, "parse_mode": "Markdown"}
-                requests.post(url_api, json=payload)
-                    
+                respuesta = """
+🤖 Comandos disponibles:
+/estado - Ver estado del BDE
+/test - Probar alertas
+/recordar [texto] - Enviar recordatorio a Romina
+/resumen - Enviar una opción predefinida a Romina
+"""
+                enviar_mensaje_telegram(chat_id, respuesta)
+                
     except Exception as e:
-        print(f"Error en webhook: {e}", flush=True)
+        print(f"❌ Error en webhook: {e}", flush=True)
         
     return "OK", 200
+
+# ==================== SERVIDOR ====================
+
+scheduler_2min = BackgroundScheduler()
+scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
+scheduler_2min.start()
+
+scheduler_1hora = BackgroundScheduler()
+
+def programar_alerta_horaria():
+    ahora = get_hora_chile()
+    hoy = ahora.date()
+    hora_8_30 = datetime(hoy.year, hoy.month, hoy.day, 8, 30, 0)
+    
+    if ahora > hora_8_30:
+        hora_8_30 = hora_8_30 + timedelta(days=1)
+    
+    print(f"⏰ Próxima alerta programada a las {hora_8_30.strftime('%H:%M')}", flush=True)
+    
+    scheduler_1hora.add_job(
+        func=revisar_web_cada_1hora,
+        trigger="date",
+        run_date=hora_8_30
+    )
+    
+    scheduler_1hora.add_job(
+        func=revisar_web_cada_1hora,
+        trigger="interval",
+        hours=1,
+        start_date=hora_8_30 + timedelta(hours=1)
+    )
+
+programar_alerta_horaria()
+scheduler_1hora.start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print("="*60)
-    print("🚀 BOT DE MERCADO CHILENO")
+    print("🚀 BDE MONITOR - Banco Central de Chile")
     print("="*60)
+    print(f"📌 URL a monitorear: {URL_MONITOREO}")
     print(f"⏱️ Revisión cada: 2 minutos")
-    print(f"🕐 Horario: Lun-Vie 9:00-16:10 (hora Chile)")
-    print(f"📈 Acciones: {len(TICKERS_INTERES)} monitoreadas")
+    print(f"⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)")
+    print(f"📱 Alertas por: Telegram")
+    print(f"👥 Destinatarios: Carl y Romina")
+    print(f"🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
