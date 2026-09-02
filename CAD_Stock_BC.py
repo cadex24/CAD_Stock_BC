@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
-TELEGRAM_TOKEN = "8880757995:AAGNTQuFhZ4uE7sISDxspnHSze1PNk7HWQA"  # <--- TOKEN CORRECTO
+TELEGRAM_TOKEN = "8880757995:AAGNTQuFhZ4uE7sISDxspnHSze1PNk7HWQA"
 
 CHAT_IDS = {
     "carl": "7742724655",
@@ -28,6 +28,7 @@ def get_hora_chile_str():
 # ==================== FUNCIONES ====================
 
 def en_horario():
+    """Verifica si estamos en horario de control (hora Chile)"""
     hora_chile = get_hora_chile()
     dia_semana = hora_chile.weekday()
     if dia_semana >= 5:
@@ -344,6 +345,7 @@ Responde con el número de la opción (1, 2 o 3).
 # ==================== SERVIDOR ====================
 
 def programar_alerta_horaria():
+    """Programa la primera alerta a las 8:30 AM y luego cada 1 hora (hora Chile)"""
     ahora = get_hora_chile()
     hoy = ahora.date()
     
@@ -352,7 +354,7 @@ def programar_alerta_horaria():
     if ahora > hora_8_30:
         hora_8_30 = hora_8_30 + timedelta(days=1)
     
-    print(f"⏰ Próxima alerta programada a las {hora_8_30.strftime('%H:%M')}", flush=True)
+    print(f"⏰ Próxima alerta programada a las {hora_8_30.strftime('%H:%M')} (hora Chile)", flush=True)
     
     scheduler_1hora.add_job(
         func=revisar_web_cada_1hora,
