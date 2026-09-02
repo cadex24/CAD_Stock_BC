@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8995245953:AAGEZZr-KnwItSMe7n5Ys-8m1PRuP0DVukA")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "NO_HAY_TOKEN")
 
 ULTIMO_CHAT_ID = None
 MI_CARTERA = {}
