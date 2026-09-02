@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
-TELEGRAM_TOKEN = "8880757995:AAFre5X-HtkmDr0BYpvHTV0pT6DFIbM6JKg"
+TELEGRAM_TOKEN = "8880757995:AAGNTQuFhZ4uE7sISDxspnHSze1PNk7HWQA"  # <--- TOKEN CORRECTO
 
 CHAT_IDS = {
     "carl": "7742724655",
@@ -225,17 +225,14 @@ Responde con el número de la opción (1, 2 o 3).
                     }
                     pregunta = preguntas[text]
                     
-                    # Guardar qué pregunta se envió para identificar la respuesta
                     estado_usuario[chat_id] = f"esperando_respuesta_{text}"
                     estado_usuario[CHAT_IDS["romina"]] = f"respondiendo_pregunta_{text}"
                     
-                    # Enviar la pregunta a Romina
                     enviar_mensaje_telegram(
                         CHAT_IDS["romina"],
                         f"📋 *Pregunta de CAD_Stock_BC:*\n\n{pregunta}"
                     )
                     
-                    # Confirmar a Carl
                     enviar_mensaje_telegram(
                         chat_id,
                         f"✅ *Pregunta {text} enviada a Romina* 📋\n\n{pregunta}"
@@ -249,10 +246,8 @@ Responde con el número de la opción (1, 2 o 3).
             # ============ MANEJAR RESPUESTA DE ROMINA ============
             elif str(chat_id) == CHAT_IDS["romina"]:
                 if estado_usuario.get(chat_id) and estado_usuario[chat_id].startswith("respondiendo_pregunta_") and not text.startswith("/"):
-                    # Extraer el número de pregunta
                     num_pregunta = estado_usuario[chat_id].replace("respondiendo_pregunta_", "")
                     
-                    # Enviar la respuesta a Carl
                     enviar_mensaje_telegram(
                         CHAT_IDS["carl"],
                         f"📩 *Respuesta de Romina a la pregunta {num_pregunta}:*\n\n{text}\n\n🕐 {get_hora_chile_str()}"
@@ -261,7 +256,6 @@ Responde con el número de la opción (1, 2 o 3).
                         chat_id,
                         "✅ ¡Gracias por tu respuesta! Se la he enviado a Carl. 🙏"
                     )
-                    # Limpiar estado
                     estado_usuario[chat_id] = None
             
             # ============ COMANDO /recordar ============
