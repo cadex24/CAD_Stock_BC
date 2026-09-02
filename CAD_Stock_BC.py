@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
-TELEGRAM_TOKEN = "8880757995:AAFre5X-HtkmDr0BYpvHTV0pT6DFIbM6JKg"
+TELEGRAM_TOKEN = "8880757995:AAGNTQuFhZ4uE7sISDxspnHSze1PNk7HWQA"
 
 CHAT_IDS = {
     "carl": "7742724655",
