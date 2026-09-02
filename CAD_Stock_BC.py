@@ -10,11 +10,10 @@ app = Flask(__name__)
 
 TELEGRAM_TOKEN = "8880757995:AAFre5X-HtkmDr0BYpvHTV0pT6DFIbM6JKg"
 
-# Lista de destinatarios
-CHAT_IDS = [
-    "7742724655",      # Carl
-    "8834565828"       # Romina  ← AGREGADA
-]
+CHAT_IDS = {
+    "carl": "7742724655",
+    "romina": "8834565828"
+}
 
 URL_MONITOREO = "https://si3.bcentral.cl/siete"
 
@@ -37,7 +36,6 @@ def en_horario():
     return 8.5 <= hora <= 18.5
 
 def enviar_mensaje_telegram(chat_id, mensaje):
-    """Envía un mensaje a un chat específico"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {
@@ -52,8 +50,7 @@ def enviar_mensaje_telegram(chat_id, mensaje):
         return False
 
 def enviar_alerta_telegram(mensaje):
-    """Envía un mensaje a todos los destinatarios"""
-    for chat_id in CHAT_IDS:
+    for nombre, chat_id in CHAT_IDS.items():
         enviar_mensaje_telegram(chat_id, mensaje)
 
 def verificar_web():
@@ -148,7 +145,7 @@ def estado():
 📊 {mensaje}
 🕐 Hora Chile: {hora_chile}
 📱 Alertas por: Telegram
-👥 Destinatarios: {len(CHAT_IDS)} usuarios
+👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
 🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
@@ -162,7 +159,7 @@ def estado():
 📊 {mensaje}
 🕐 Hora Chile: {hora_chile}
 📱 Alertas por: Telegram
-👥 Destinatarios: {len(CHAT_IDS)} usuarios
+👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora
 🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
@@ -195,12 +192,33 @@ def webhook_telegram():
             
             print(f"📩 Mensaje recibido de {chat_id}: {text}", flush=True)
             
-            if CHAT_IDS and str(chat_id) not in CHAT_IDS:
-                print(f"⚠️ Chat ID {chat_id} no autorizado", flush=True)
+            # Verificar si el chat_id está autorizado
+            if str(chat_id) not in CHAT_IDS.values():
                 enviar_mensaje_telegram(chat_id, "⚠️ No estás autorizado para usar este bot.")
                 return "OK", 200
             
-            if text == "/start":
+            # ============ COMANDO: /recordar ============
+            if text.startswith("/recordar"):
+                partes = text.split(" ", 1)
+                if len(partes) > 1:
+                    mensaje = partes[1]
+                    # Enviar a Romina: "CAD_Stock_BC: [mensaje]"
+                    enviar_mensaje_telegram(
+                        CHAT_IDS["romina"],
+                        f"CAD_Stock_BC: {mensaje}"
+                    )
+                    # Confirmar a Carl
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        f"✅ Recordatorio enviado a Romina: {mensaje}"
+                    )
+                else:
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        "⚠️ Debes escribir un mensaje. Ejemplo:\n`/recordar Pagar la luz`"
+                    )
+            
+            elif text == "/start":
                 respuesta = """
 🤖 *BDE Monitor - Banco Central de Chile*
 
@@ -210,6 +228,7 @@ def webhook_telegram():
 *Comandos disponibles:*
 /estado - Ver estado del BDE
 /test - Probar alertas
+/recordar [texto] - Enviar recordatorio a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -252,6 +271,7 @@ def webhook_telegram():
 🤖 Comandos disponibles:
 /estado - Ver estado del BDE
 /test - Probar alertas
+/recordar [texto] - Enviar recordatorio a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -279,6 +299,7 @@ if __name__ == "__main__":
     print(f"⏱️ Revisión cada: 2 minutos")
     print(f"⏱️ Alerta horaria: Cada 1 hora")
     print(f"📱 Alertas por: Telegram")
+    print(f"👥 Destinatarios: Carl y Romina")
     print(f"🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
