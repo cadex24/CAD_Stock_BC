@@ -34,7 +34,7 @@ def en_horario():
     if dia_semana >= 5:
         return False
     hora = hora_chile.hour + hora_chile.minute / 60.0
-    return 8.5 <= hora <= 18.5
+    return 8.5 <= hora <= 18.75  # 8:30 AM a 6:45 PM (hora Chile)
 
 def enviar_mensaje_telegram(chat_id, mensaje):
     try:
@@ -149,7 +149,7 @@ def estado():
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)
-🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
+🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)
 """
     else:
         return f"""
@@ -163,7 +163,7 @@ def estado():
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 2 minutos
 ⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)
-🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)
+🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)
 """
 
 @app.route("/test")
@@ -387,6 +387,6 @@ if __name__ == "__main__":
     print(f"⏱️ Alerta horaria: Cada 1 hora (primera a las 8:30)")
     print(f"📱 Alertas por: Telegram")
     print(f"👥 Destinatarios: Carl y Romina")
-    print(f"🕐 Horario: Lun-Vie 8:30-18:30 (hora Chile)")
+    print(f"🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
