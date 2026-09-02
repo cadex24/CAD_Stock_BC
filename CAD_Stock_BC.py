@@ -8,8 +8,7 @@ app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
-# LEE EL TOKEN DESDE LAS VARIABLES DE ENTORNO (SEGURO)
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "NO_HAY_TOKEN")
+TELEGRAM_TOKEN = "8880757995:AAFre5X-HtkmDr0BYpvHTV0pT6DFIbM6JKg"
 
 CHAT_IDS = {
     "carl": "7742724655",
@@ -199,48 +198,47 @@ def webhook_telegram():
                 enviar_mensaje_telegram(chat_id, "⚠️ No estás autorizado para usar este bot.")
                 return "OK", 200
             
-            # ============ COMANDO /consultas ============
-            if text == "/consultas":
-                estado_usuario[chat_id] = "esperando_opcion_consulta"
+            # ============ COMANDO /encuesta ============
+            if text == "/encuesta":
+                estado_usuario[CHAT_IDS["romina"]] = "encuesta_pendiente"
                 
-                respuesta = """
-📋 *Selecciona una consulta para enviar a Romina:*
+                mensaje = """
+📋 *Estimado usuario CAD_Stock_BC*
 
-1️⃣ Estimado Usuario de CAD_Stock_BC : favor calificar su servicio 1 : Bien   2 : BAD
-2️⃣ Estimado Usuario de CAD_Stock_BC : alternativas de mejora o opiniones ?
-3️⃣ Estimado Usuario de CAD_Stock_BC : calificar servicio de 1 - 7 gracias
+Por favor, responda las siguientes preguntas:
 
-Responde con el número de la opción (1, 2 o 3).
+1️⃣ Is the service good or bad? (respond with 1 if good, 2 if bad)
+
+2️⃣ Describe your experience with the service (max 80 characters)
+
+3️⃣ Please rate the service from 1 to 7
+
+Responda con el número de la pregunta y su respuesta.
+Ejemplo:
+1: 1
+2: The service is excellent
+3: 6
 """
-                enviar_mensaje_telegram(chat_id, respuesta)
+                enviar_mensaje_telegram(CHAT_IDS["romina"], mensaje)
+                
+                enviar_mensaje_telegram(
+                    chat_id,
+                    "✅ *Encuesta enviada a Romina* 📋\n\n"
+                    "La encuesta ha sido enviada. Te haré llegar sus respuestas en cuanto responda. 🙏"
+                )
             
-            # ============ MANEJAR RESPUESTA DE CONSULTA ============
-            elif estado_usuario.get(chat_id) == "esperando_opcion_consulta":
-                if text in ["1", "2", "3"]:
-                    opciones = {
-                        "1": "Dear CAD_Stock_BC User: Please rate your service 1: Good   2: BAD",
-                        "2": "Dear CAD_Stock_BC User: alternatives for improvement or opinions?",
-                        "3": "Dear CAD_Stock_BC User: rate the service from 1 to 7, thank you"
-                    }
-                    mensaje = opciones[text]
-                    
-                    # Enviar a Romina (en inglés)
+            # ============ MANEJAR RESPUESTA DE ROMINA ============
+            elif str(chat_id) == CHAT_IDS["romina"]:
+                if estado_usuario.get(chat_id) == "encuesta_pendiente" and not text.startswith("/"):
                     enviar_mensaje_telegram(
-                        CHAT_IDS["romina"],
-                        f"CAD_Stock_BC: {mensaje}"
+                        CHAT_IDS["carl"],
+                        f"📩 *Respuestas de Romina a la encuesta:*\n\n{text}\n\n🕐 {get_hora_chile_str()}"
                     )
-                    # Confirmar a Carl
                     enviar_mensaje_telegram(
                         chat_id,
-                        f"✅ Consulta enviada a Romina: {mensaje}"
+                        "✅ ¡Gracias por tus respuestas! Se las he enviado a Carl. 🙏"
                     )
-                    # Limpiar estado
                     estado_usuario[chat_id] = None
-                else:
-                    enviar_mensaje_telegram(
-                        chat_id,
-                        "⚠️ Opción inválida. Responde con 1, 2 o 3."
-                    )
             
             # ============ COMANDO /recordar ============
             elif text.startswith("/recordar"):
@@ -261,22 +259,6 @@ Responde con el número de la opción (1, 2 o 3).
                         "⚠️ Debes escribir un mensaje. Ejemplo:\n`/recordar Pagar la luz`"
                     )
             
-            # ============ RESPUESTA DE ROMINA ============
-            elif str(chat_id) == CHAT_IDS["romina"]:
-                if not text.startswith("/"):
-                    palabras = text.split()
-                    if len(palabras) > 80:
-                        text = " ".join(palabras[:80]) + "..."
-                    
-                    enviar_mensaje_telegram(
-                        CHAT_IDS["carl"],
-                        f"📩 *Respuesta de Romina:*\n\n{text}\n\n🕐 {get_hora_chile_str()}"
-                    )
-                    enviar_mensaje_telegram(
-                        chat_id,
-                        "✅ Tu respuesta ha sido enviada a Carl. ¡Gracias! 🙏"
-                    )
-            
             elif text == "/start":
                 respuesta = """
 🤖 *BDE Monitor - Banco Central de Chile*
@@ -288,7 +270,7 @@ Responde con el número de la opción (1, 2 o 3).
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
-/consultas - Enviar una consulta predefinida a Romina
+/encuesta - Enviar encuesta a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -332,7 +314,7 @@ Responde con el número de la opción (1, 2 o 3).
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
-/consultas - Enviar una consulta predefinida a Romina
+/encuesta - Enviar encuesta a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -343,18 +325,10 @@ Responde con el número de la opción (1, 2 o 3).
 
 # ==================== SERVIDOR ====================
 
-# Scheduler para revisión cada 2 minutos (monitoreo)
-scheduler_2min = BackgroundScheduler()
-scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
-scheduler_2min.start()
-
-# Scheduler para alerta horaria (programada a las 8:30 y luego cada 1 hora)
-scheduler_1hora = BackgroundScheduler()
-
 def programar_alerta_horaria():
-    """Programa la primera alerta a las 8:30 AM y luego cada 1 hora"""
     ahora = get_hora_chile()
     hoy = ahora.date()
+    
     hora_8_30 = datetime(hoy.year, hoy.month, hoy.day, 8, 30, 0)
     
     if ahora > hora_8_30:
@@ -362,14 +336,12 @@ def programar_alerta_horaria():
     
     print(f"⏰ Próxima alerta programada a las {hora_8_30.strftime('%H:%M')}", flush=True)
     
-    # Programar la primera alerta a las 8:30
     scheduler_1hora.add_job(
         func=revisar_web_cada_1hora,
         trigger="date",
         run_date=hora_8_30
     )
     
-    # Programar el resto cada 1 hora
     scheduler_1hora.add_job(
         func=revisar_web_cada_1hora,
         trigger="interval",
@@ -377,6 +349,11 @@ def programar_alerta_horaria():
         start_date=hora_8_30 + timedelta(hours=1)
     )
 
+scheduler_2min = BackgroundScheduler()
+scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
+scheduler_2min.start()
+
+scheduler_1hora = BackgroundScheduler()
 programar_alerta_horaria()
 scheduler_1hora.start()
 
