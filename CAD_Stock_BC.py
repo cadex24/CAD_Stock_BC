@@ -198,7 +198,7 @@ def webhook_telegram():
                 enviar_mensaje_telegram(chat_id, "⚠️ No estás autorizado para usar este bot.")
                 return "OK", 200
             
-            # ============ FLUJO DE /resumen ============
+            # ============ COMANDO /resumen ============
             if text == "/resumen":
                 estado_usuario[chat_id] = "esperando_opcion_resumen"
                 
