@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # ==================== CONFIGURACIÓN ====================
 
-TELEGRAM_TOKEN = "8880757995:AAGNTQuFhZ4uE7sISDxspnHSze1PNk7HWQA"
+TELEGRAM_TOKEN = "8880757995:AAFre5X-HtkmDr0BYpvHTV0pT6DFIbM6JKg"
 
 CHAT_IDS = {
     "carl": "7742724655",
@@ -200,44 +200,68 @@ def webhook_telegram():
             
             # ============ COMANDO /encuesta ============
             if text == "/encuesta":
-                estado_usuario[CHAT_IDS["romina"]] = "encuesta_pendiente"
+                estado_usuario[chat_id] = "seleccionando_pregunta"
                 
-                mensaje = """
-📋 *Estimado usuario CAD_Stock_BC*
+                respuesta = """
+📋 *Selecciona la pregunta que quieres enviar a Romina:*
 
-Por favor, responda las siguientes preguntas:
+1️⃣ Is the service good or bad? (responde con 1 si es good, 2 si es bad)
 
-1️⃣ Is the service good or bad? (respond with 1 if good, 2 if bad)
-
-2️⃣ Describe your experience with the service (max 80 characters)
+2️⃣ Describe your experience with the service (máximo 80 caracteres)
 
 3️⃣ Please rate the service from 1 to 7
 
-Responda con el número de la pregunta y su respuesta.
-Ejemplo:
-1: 1
-2: The service is excellent
-3: 6
+Responde con el número de la opción (1, 2 o 3).
 """
-                enviar_mensaje_telegram(CHAT_IDS["romina"], mensaje)
-                
-                enviar_mensaje_telegram(
-                    chat_id,
-                    "✅ *Encuesta enviada a Romina* 📋\n\n"
-                    "La encuesta ha sido enviada. Te haré llegar sus respuestas en cuanto responda. 🙏"
-                )
+                enviar_mensaje_telegram(chat_id, respuesta)
+            
+            # ============ MANEJAR SELECCIÓN DE PREGUNTA ============
+            elif estado_usuario.get(chat_id) == "seleccionando_pregunta":
+                if text in ["1", "2", "3"]:
+                    preguntas = {
+                        "1": "Is the service good or bad? (responde con 1 si es good, 2 si es bad)",
+                        "2": "Describe your experience with the service (máximo 80 caracteres)",
+                        "3": "Please rate the service from 1 to 7"
+                    }
+                    pregunta = preguntas[text]
+                    
+                    # Guardar qué pregunta se envió para identificar la respuesta
+                    estado_usuario[chat_id] = f"esperando_respuesta_{text}"
+                    estado_usuario[CHAT_IDS["romina"]] = f"respondiendo_pregunta_{text}"
+                    
+                    # Enviar la pregunta a Romina
+                    enviar_mensaje_telegram(
+                        CHAT_IDS["romina"],
+                        f"📋 *Pregunta de CAD_Stock_BC:*\n\n{pregunta}"
+                    )
+                    
+                    # Confirmar a Carl
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        f"✅ *Pregunta {text} enviada a Romina* 📋\n\n{pregunta}"
+                    )
+                else:
+                    enviar_mensaje_telegram(
+                        chat_id,
+                        "⚠️ Opción inválida. Responde con 1, 2 o 3."
+                    )
             
             # ============ MANEJAR RESPUESTA DE ROMINA ============
             elif str(chat_id) == CHAT_IDS["romina"]:
-                if estado_usuario.get(chat_id) == "encuesta_pendiente" and not text.startswith("/"):
+                if estado_usuario.get(chat_id) and estado_usuario[chat_id].startswith("respondiendo_pregunta_") and not text.startswith("/"):
+                    # Extraer el número de pregunta
+                    num_pregunta = estado_usuario[chat_id].replace("respondiendo_pregunta_", "")
+                    
+                    # Enviar la respuesta a Carl
                     enviar_mensaje_telegram(
                         CHAT_IDS["carl"],
-                        f"📩 *Respuestas de Romina a la encuesta:*\n\n{text}\n\n🕐 {get_hora_chile_str()}"
+                        f"📩 *Respuesta de Romina a la pregunta {num_pregunta}:*\n\n{text}\n\n🕐 {get_hora_chile_str()}"
                     )
                     enviar_mensaje_telegram(
                         chat_id,
-                        "✅ ¡Gracias por tus respuestas! Se las he enviado a Carl. 🙏"
+                        "✅ ¡Gracias por tu respuesta! Se la he enviado a Carl. 🙏"
                     )
+                    # Limpiar estado
                     estado_usuario[chat_id] = None
             
             # ============ COMANDO /recordar ============
@@ -270,7 +294,7 @@ Ejemplo:
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
-/encuesta - Enviar encuesta a Romina
+/encuesta - Seleccionar y enviar una pregunta a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
@@ -314,7 +338,7 @@ Ejemplo:
 /estado - Ver estado del BDE
 /test - Probar alertas
 /recordar [texto] - Enviar recordatorio a Romina
-/encuesta - Enviar encuesta a Romina
+/encuesta - Seleccionar y enviar una pregunta a Romina
 """
                 enviar_mensaje_telegram(chat_id, respuesta)
                 
