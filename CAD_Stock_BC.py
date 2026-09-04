@@ -20,9 +20,11 @@ URL_MONITOREO = "https://si3.bcentral.cl/siete"
 # ==================== FUNCIÓN DE HORA CHILE ====================
 
 def get_hora_chile():
+    """Retorna la hora actual en Chile (UTC-4)"""
     return datetime.now() - timedelta(hours=4)
 
 def get_hora_chile_str():
+    """Retorna la hora actual en Chile formateada"""
     return get_hora_chile().strftime('%H:%M:%S')
 
 # ==================== FUNCIONES ====================
@@ -31,10 +33,10 @@ def en_horario():
     """Verifica si estamos en horario de control (hora Chile)"""
     hora_chile = get_hora_chile()
     dia_semana = hora_chile.weekday()
-    if dia_semana >= 5:  # Sábado o Domingo
+    if dia_semana >= 5:
         return False
     hora = hora_chile.hour + hora_chile.minute / 60.0
-    return 8.5 <= hora <= 19.0  # 8:30 AM a 7:00 PM (hora Chile)
+    return 8.5 <= hora <= 18.75  # 8:30 AM a 6:45 PM
 
 def enviar_mensaje_telegram(chat_id, mensaje):
     try:
@@ -149,8 +151,8 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 30 segundos
-⏱️ Alerta horaria: 8:30, 9:30, 10:30...19:00
-🕐 Horario: Lun-Vie 8:30-19:00 (hora Chile)
+⏱️ Alerta horaria: Cada 1 hora (8:30-18:45)
+🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)
 """
     else:
         return f"""
@@ -163,8 +165,8 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 30 segundos
-⏱️ Alerta horaria: 8:30, 9:30, 10:30...19:00
-🕐 Horario: Lun-Vie 8:30-19:00 (hora Chile)
+⏱️ Alerta horaria: Cada 1 hora (8:30-18:45)
+🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)
 """
 
 @app.route("/test")
@@ -346,18 +348,22 @@ Responde con el número de la opción (1, 2 o 3).
 # ==================== SERVIDOR ====================
 
 def programar_alertas_horarias():
-    """Programa alertas horarias fijas: 8:30, 9:30, 10:30...19:00"""
-    horas = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    """Programa alertas horarias fijas: 8:30, 9:30, 10:30...18:30"""
+    horas = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+    
+    ahora = get_hora_chile()
+    hoy = ahora.date()
     
     for hora in horas:
-        # Calcular la hora exacta
-        ahora = get_hora_chile()
-        hoy = ahora.date()
+        # Crear la hora de alerta en hora Chile
         hora_alerta = datetime(hoy.year, hoy.month, hoy.day, hora, 30, 0)
         
         # Si la hora ya pasó hoy, programar para mañana
-        if ahora > hora_alerta:
+        if ahora >= hora_alerta:
             hora_alerta = hora_alerta + timedelta(days=1)
+        
+        # Calcular el tiempo hasta la alerta
+        tiempo_restante = (hora_alerta - ahora).total_seconds()
         
         # Programar la alerta
         scheduler_horaria.add_job(
@@ -365,16 +371,6 @@ def programar_alertas_horarias():
             trigger="date",
             run_date=hora_alerta,
             args=[hora_alerta.strftime('%H:%M')]
-        )
-        
-        # Programar la repetición diaria
-        scheduler_horaria.add_job(
-            func=revisar_web_horaria,
-            trigger="cron",
-            day_of_week="mon-fri",
-            hour=hora,
-            minute=30,
-            args=[f"{hora:02d}:30"]
         )
 
 # Scheduler para revisión cada 30 segundos
@@ -394,9 +390,9 @@ if __name__ == "__main__":
     print("="*60)
     print(f"📌 URL a monitorear: {URL_MONITOREO}")
     print(f"⏱️ Revisión cada: 30 segundos")
-    print(f"⏱️ Alertas horarias: 8:30, 9:30, 10:30...19:00")
+    print(f"⏱️ Alertas horarias: 8:30, 9:30, 10:30...18:30")
     print(f"📱 Alertas por: Telegram")
     print(f"👥 Destinatarios: Carl y Romina")
-    print(f"🕐 Horario: Lun-Vie 8:30-19:00 (hora Chile)")
+    print(f"🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
