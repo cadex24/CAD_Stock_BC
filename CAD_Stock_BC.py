@@ -31,10 +31,10 @@ def en_horario():
     """Verifica si estamos en horario de control (hora Chile)"""
     hora_chile = get_hora_chile()
     dia_semana = hora_chile.weekday()
-    if dia_semana >= 5:
+    if dia_semana >= 5:  # Sábado o Domingo
         return False
     hora = hora_chile.hour + hora_chile.minute / 60.0
-    return 8.5 <= hora <= 18.75
+    return 8.5 <= hora <= 19.0  # 8:30 AM a 7:00 PM (hora Chile)
 
 def enviar_mensaje_telegram(chat_id, mensaje):
     try:
@@ -68,7 +68,8 @@ def verificar_web():
     except Exception as e:
         return False, f"❌ BDE: OFFLINE 🔴 (Error: {str(e)})"
 
-def revisar_web_cada_2min():
+def revisar_web_cada_30s():
+    """Revisa la web cada 30 segundos (solo en horario)"""
     if not en_horario():
         return
     
@@ -92,11 +93,11 @@ def revisar_web_cada_2min():
 """
         enviar_alerta_telegram(alerta)
 
-def revisar_web_cada_1hora():
+def revisar_web_horaria(hora_str):
+    """Envía alerta horaria a una hora específica"""
     if not en_horario():
         return
     
-    hora_str = get_hora_chile_str()
     print(f"🕐 [{hora_str}] ALERTA HORARIA - Verificando BDE...", flush=True)
     
     activa, mensaje = verificar_web()
@@ -147,9 +148,9 @@ def estado():
 🕐 Hora Chile: {hora_chile}
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
-⏱️ Revisión cada: 2 minutos
-⏱️ Alerta horaria: Cada 1 hora
-🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)
+⏱️ Revisión cada: 30 segundos
+⏱️ Alerta horaria: 8:30, 9:30, 10:30...19:00
+🕐 Horario: Lun-Vie 8:30-19:00 (hora Chile)
 """
     else:
         return f"""
@@ -161,9 +162,9 @@ def estado():
 🕐 Hora Chile: {hora_chile}
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
-⏱️ Revisión cada: 2 minutos
-⏱️ Alerta horaria: Cada 1 hora
-🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)
+⏱️ Revisión cada: 30 segundos
+⏱️ Alerta horaria: 8:30, 9:30, 10:30...19:00
+🕐 Horario: Lun-Vie 8:30-19:00 (hora Chile)
 """
 
 @app.route("/test")
@@ -344,45 +345,47 @@ Responde con el número de la opción (1, 2 o 3).
 
 # ==================== SERVIDOR ====================
 
-def programar_alerta_horaria():
-    """Programa la primera alerta 1 hora después del inicio, luego cada 1 hora"""
-    ahora = get_hora_chile()
-    hoy = ahora.date()
+def programar_alertas_horarias():
+    """Programa alertas horarias fijas: 8:30, 9:30, 10:30...19:00"""
+    horas = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     
-    # PRIMERA ALERTA: 1 hora después del inicio
-    primera_alerta = ahora + timedelta(hours=1)
-    
-    # Verificar si cae dentro del horario de hoy
-    hora = primera_alerta.hour + primera_alerta.minute / 60.0
-    if 8.5 <= hora <= 18.75:
-        print(f"⏰ Próxima alerta programada para HOY a las {primera_alerta.strftime('%H:%M')} (hora Chile)", flush=True)
-    else:
-        # Si no, programar para mañana a las 8:30
-        primera_alerta = datetime(hoy.year, hoy.month, hoy.day, 8, 30, 0) + timedelta(days=1)
-        print(f"⏰ Próxima alerta programada para MAÑANA a las {primera_alerta.strftime('%H:%M')} (hora Chile)", flush=True)
-    
-    # Programar la primera alerta
-    scheduler_1hora.add_job(
-        func=revisar_web_cada_1hora,
-        trigger="date",
-        run_date=primera_alerta
-    )
-    
-    # Programar el resto cada 1 hora
-    scheduler_1hora.add_job(
-        func=revisar_web_cada_1hora,
-        trigger="interval",
-        hours=1,
-        start_date=primera_alerta + timedelta(hours=1)
-    )
+    for hora in horas:
+        # Calcular la hora exacta
+        ahora = get_hora_chile()
+        hoy = ahora.date()
+        hora_alerta = datetime(hoy.year, hoy.month, hoy.day, hora, 30, 0)
+        
+        # Si la hora ya pasó hoy, programar para mañana
+        if ahora > hora_alerta:
+            hora_alerta = hora_alerta + timedelta(days=1)
+        
+        # Programar la alerta
+        scheduler_horaria.add_job(
+            func=revisar_web_horaria,
+            trigger="date",
+            run_date=hora_alerta,
+            args=[hora_alerta.strftime('%H:%M')]
+        )
+        
+        # Programar la repetición diaria
+        scheduler_horaria.add_job(
+            func=revisar_web_horaria,
+            trigger="cron",
+            day_of_week="mon-fri",
+            hour=hora,
+            minute=30,
+            args=[f"{hora:02d}:30"]
+        )
 
-scheduler_2min = BackgroundScheduler()
-scheduler_2min.add_job(func=revisar_web_cada_2min, trigger="interval", minutes=2)
-scheduler_2min.start()
+# Scheduler para revisión cada 30 segundos
+scheduler_30s = BackgroundScheduler()
+scheduler_30s.add_job(func=revisar_web_cada_30s, trigger="interval", seconds=30)
+scheduler_30s.start()
 
-scheduler_1hora = BackgroundScheduler()
-programar_alerta_horaria()
-scheduler_1hora.start()
+# Scheduler para alertas horarias fijas
+scheduler_horaria = BackgroundScheduler()
+programar_alertas_horarias()
+scheduler_horaria.start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
@@ -390,10 +393,10 @@ if __name__ == "__main__":
     print("🚀 BDE MONITOR - Banco Central de Chile")
     print("="*60)
     print(f"📌 URL a monitorear: {URL_MONITOREO}")
-    print(f"⏱️ Revisión cada: 2 minutos")
-    print(f"⏱️ Alerta horaria: Cada 1 hora")
+    print(f"⏱️ Revisión cada: 30 segundos")
+    print(f"⏱️ Alertas horarias: 8:30, 9:30, 10:30...19:00")
     print(f"📱 Alertas por: Telegram")
     print(f"👥 Destinatarios: Carl y Romina")
-    print(f"🕐 Horario: Lun-Vie 8:30-18:45 (hora Chile)")
+    print(f"🕐 Horario: Lun-Vie 8:30-19:00 (hora Chile)")
     print("="*60)
     app.run(host="0.0.0.0", port=port)
