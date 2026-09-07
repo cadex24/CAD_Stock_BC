@@ -20,8 +20,8 @@ URL_MONITOREO = "https://si3.bcentral.cl/siete"
 # ==================== FUNCIÓN DE HORA CHILE ====================
 
 def get_hora_chile():
-    """Retorna la hora actual en Chile (UTC-4)"""
-    return datetime.now() - timedelta(hours=4)
+    """Retorna la hora actual en Chile (UTC-3 en verano)"""
+    return datetime.now() - timedelta(hours=3)
 
 def get_hora_chile_str():
     """Retorna la hora actual en Chile formateada"""
@@ -33,7 +33,7 @@ def en_horario():
     """Verifica si estamos en horario de control (hora Chile)"""
     hora_chile = get_hora_chile()
     dia_semana = hora_chile.weekday()
-    if dia_semana >= 5:
+    if dia_semana >= 5:  # Sábado o Domingo
         return False
     hora = hora_chile.hour + hora_chile.minute / 60.0
     return 8.25 <= hora <= 18.75  # 8:15 AM a 6:45 PM (hora Chile)
@@ -352,6 +352,8 @@ def programar_alertas_horarias():
     # Horas de alerta: 8:30, 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30, 16:30, 17:30, 18:30
     horas = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
     
+    print("📋 PROGRAMANDO ALERTAS HORARIAS (HORA CHILE UTC-3):", flush=True)
+    
     for hora in horas:
         # Usa CRON para que sean recurrentes todos los días
         scheduler_horaria.add_job(
@@ -361,7 +363,9 @@ def programar_alertas_horarias():
             minute=30,
             args=[f"{hora:02d}:30"]
         )
-        print(f"⏰ Programada alerta horaria: {hora:02d}:30", flush=True)
+        print(f"   ⏰ {hora:02d}:30", flush=True)
+    
+    print("✅ Todas las alertas horarias programadas correctamente", flush=True)
 
 # Scheduler para revisión cada 30 segundos
 scheduler_30s = BackgroundScheduler()
@@ -382,7 +386,7 @@ if __name__ == "__main__":
     print("="*60)
     print(f"📌 URL a monitorear: {URL_MONITOREO}")
     print(f"⏱️ Revisión cada: 30 segundos")
-    print(f"⏱️ Alertas horarias: 8:30, 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30, 16:30, 17:30, 18:30 (hora Chile)")
+    print(f"⏱️ Alertas horarias: 8:30, 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30, 16:30, 17:30, 18:30 (hora Chile UTC-3)")
     print(f"📱 Alertas por: Telegram")
     print(f"👥 Destinatarios: Carl y Romina")
     print(f"🕐 Horario: Lun-Vie 8:15-18:45 (hora Chile)")
