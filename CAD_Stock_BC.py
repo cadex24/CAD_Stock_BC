@@ -151,7 +151,7 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 30 segundos
-⏱️ Alerta horaria: 8:30, 9:30, 10:30...18:30
+⏱️ Alerta horaria: 8:30, 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30, 16:30, 17:30, 18:30 (hora Chile)
 🕐 Horario: Lun-Vie 8:15-18:45 (hora Chile)
 """
     else:
@@ -165,7 +165,7 @@ def estado():
 📱 Alertas por: Telegram
 👥 Destinatarios: Carl y Romina
 ⏱️ Revisión cada: 30 segundos
-⏱️ Alerta horaria: 8:30, 9:30, 10:30...18:30
+⏱️ Alerta horaria: 8:30, 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30, 16:30, 17:30, 18:30 (hora Chile)
 🕐 Horario: Lun-Vie 8:15-18:45 (hora Chile)
 """
 
@@ -348,35 +348,32 @@ Responde con el número de la opción (1, 2 o 3).
 # ==================== SERVIDOR ====================
 
 def programar_alertas_horarias():
-    """Programa alertas horarias fijas en HORA CHILE: 8:30, 9:30, 10:30...18:30"""
+    """Programa alertas horarias fijas de forma RECURRENTE"""
+    # Horas de alerta: 8:30, 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30, 16:30, 17:30, 18:30
     horas = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
     
-    ahora = get_hora_chile()  # <--- AHORA USA HORA CHILE
-    hoy = ahora.date()
-    
     for hora in horas:
-        # Crear la hora de alerta en HORA CHILE
-        hora_alerta = datetime(hoy.year, hoy.month, hoy.day, hora, 30, 0)
-        
-        if ahora >= hora_alerta:
-            hora_alerta = hora_alerta + timedelta(days=1)
-        
+        # Usa CRON para que sean recurrentes todos los días
         scheduler_horaria.add_job(
             func=revisar_web_horaria,
-            trigger="date",
-            run_date=hora_alerta,
-            args=[hora_alerta.strftime('%H:%M')]
+            trigger='cron',
+            hour=hora,
+            minute=30,
+            args=[f"{hora:02d}:30"]
         )
+        print(f"⏰ Programada alerta horaria: {hora:02d}:30", flush=True)
 
 # Scheduler para revisión cada 30 segundos
 scheduler_30s = BackgroundScheduler()
 scheduler_30s.add_job(func=revisar_web_cada_30s, trigger="interval", seconds=30)
 scheduler_30s.start()
+print("✅ Scheduler 30s iniciado", flush=True)
 
 # Scheduler para alertas horarias fijas
 scheduler_horaria = BackgroundScheduler()
-programar_alertas_horarias()
-scheduler_horaria.start()
+programar_alertas_horarias()  # <-- Primero agregar los jobs
+scheduler_horaria.start()     # <-- Luego iniciar
+print("✅ Scheduler horario iniciado", flush=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
@@ -385,7 +382,7 @@ if __name__ == "__main__":
     print("="*60)
     print(f"📌 URL a monitorear: {URL_MONITOREO}")
     print(f"⏱️ Revisión cada: 30 segundos")
-    print(f"⏱️ Alertas horarias: 8:30, 9:30, 10:30...18:30 (hora Chile)")
+    print(f"⏱️ Alertas horarias: 8:30, 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30, 16:30, 17:30, 18:30 (hora Chile)")
     print(f"📱 Alertas por: Telegram")
     print(f"👥 Destinatarios: Carl y Romina")
     print(f"🕐 Horario: Lun-Vie 8:15-18:45 (hora Chile)")
